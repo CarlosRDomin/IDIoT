@@ -1,0 +1,4 @@
+pyserial
+coloredlogs
+verboselogs
+protobuf

@@ -18,7 +18,7 @@ void setup(void) {
     setupWiFi();
     setupWebIO();
     BNO055::setup();
-	consolePrintF("\n -- SETUP COMPLETE -- \n");	// Indicate that setup is done (we'll only send sensor data over Serial from now on #if USE_SERIAL_INSTEAD_OF_WIFI)
+	consolePrintF("\n-- SETUP COMPLETE --\n");	// Indicate that setup is done (we'll only send sensor data over Serial from now on #if USE_SERIAL_INSTEAD_OF_WIFI)
 }
 
 

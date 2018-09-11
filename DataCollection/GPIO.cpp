@@ -127,7 +127,6 @@ namespace BNO055 {
 					ProtoEncoder::setCurrTime(dataBlocks[currDataBlock]);	// Set t_latest to the current time
 					setCalibrationStatus(dataBlocks[currDataBlock].calibStatus);
 					currDataBlock = !currDataBlock;							// Switch to the other buffer (so we start filling it while the one we just filled gets sent)
-					dataBlocks[currDataBlock].id += 2;						// Increase the id to the next unique number
 					ProtoEncoder::resetArrayCount(dataBlocks[currDataBlock].orientation);	// Reset .x_count, .y_count, etc.
 					ProtoEncoder::resetArrayCount(dataBlocks[currDataBlock].linearAccel);
 					ProtoEncoder::resetArrayCount(dataBlocks[currDataBlock].gravity);
@@ -147,10 +146,14 @@ namespace BNO055 {
 			if (xSemaphoreTake(semaphoreSendSensorData, 0) == pdTRUE) {
 				FilledProtoBuf encodedMsg = protoEncoder.encodeMsg(&dataBlocks[!currDataBlock]);	// Encode the proto message
 				if (USE_SERIAL_INSTEAD_OF_WIFI) {													// And send it
-					Serial.write(encodedMsg.buf, encodedMsg.len);
+					static uint8_t buf4len[2];
+					buf4len[0] = encodedMsg.len & 0xFF; buf4len[1] = (encodedMsg.len>>8) & 0xFF;	// Use 2 bytes to specify the length of the proto buffer (little-endian encoding)
+					Serial.write(buf4len, 2);						// Send the length in bytes
+					Serial.write(encodedMsg.buf, encodedMsg.len);	// And send the buffer contents
 				} else {
 					wsSensorData.binaryAll((const char*)encodedMsg.buf, encodedMsg.len);
 				}
+				dataBlocks[!currDataBlock].id += 2;		// After sending the message, remember to increase the id for the next iteration
 			}
 		}
 	}

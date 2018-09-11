@@ -12,22 +12,26 @@ FilledProtoBuf ProtoEncoder::encodeMsg(IoT_pairing_DataBlock const *dataBlock) {
 
 	// Then just check for any errors..
 	if (!status) {
-		printf("Encoding failed: %s\n", PB_GET_ERROR(&pb_stream));
+		#if (!USE_SERIAL_INSTEAD_OF_WIFI)
+			printf("Encoding failed: %s\n", PB_GET_ERROR(&pb_stream));
+		#endif
 		return {NULL, 0};
 	} else {
-		uint16_t bufLen = pb_stream.bytes_written;	// Compute the actual length of the pb
-		bool printOut = false;
+		#if (!USE_SERIAL_INSTEAD_OF_WIFI)
+			uint16_t bufLen = pb_stream.bytes_written;	// Compute the actual length of the pb
+			bool printBuffContents = false;
 
-		printf("Successfully encoded DataBlock using %dB: t=%d", pb_stream.bytes_written, dataBlock->t_latest.seconds);
-		printf(".%09d", dataBlock->t_latest.nanos);
-		if (printOut) {
-			printf(":\t[");
-			for (int i=0; i<pb_stream.bytes_written; ++i) {
-				printf(" %d,", pb_buffer[i]);
+			printf("Successfully encoded DataBlock using %dB: t=%d", pb_stream.bytes_written, dataBlock->t_latest.seconds);
+			printf(".%09d", dataBlock->t_latest.nanos);
+			if (printBuffContents) {
+				printf(":\t[");
+				for (int i=0; i<pb_stream.bytes_written; ++i) {
+					printf(" %d,", pb_buffer[i]);
+				}
+				printf(" ]");
 			}
-			printf(" ]");
-		}
-		printf("\n");
+			printf("\n");
+		#endif
 	}
 
 	return {pb_buffer, (uint16_t)pb_stream.bytes_written};
