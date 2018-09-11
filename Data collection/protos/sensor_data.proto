@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package IoT.pairing;
+
+import "nanopb.proto";
+import "google/protobuf/timestamp.proto";
+
+// Version 1
+
+// GenericDataArray encodes a 3D array of values, specifying the magnitude and the value measured
+message GenericDataArray {
+
+  enum ArrayType {              // ArrayType encodes the magnitude of the .data elements (acceleration, orientation, etc):
+    ORIENTATION  = 0;             // Device orientation in degrees
+    LINEAR_ACCEL = 1;             // Linear acceleration in m/s^2
+    GRAVITY      = 2;             // Gravity direction in m/s^2
+    ACCEL        = 3;             // Total acceleration in m/s^2
+    GYRO         = 4;             // Angular acceleration in deg/sec
+    MAG          = 5;             // Magnetic field in uT
+  }
+
+  // Since data is sampled at low rate (100Hz), no need to overoptimize proto with a single byte array for all 3 axes, make it readable:
+  repeated float data_x = 1 [(nanopb).max_count = 50]; // x-axis data
+  repeated float data_y = 2 [(nanopb).max_count = 50]; // y-axis data
+  repeated float data_z = 3 [(nanopb).max_count = 50]; // z-axis data
+  ArrayType magnitude = 4;                              // The magnitude of the array elements
+  google.protobuf.Timestamp t_latest = 5;               // Timestamp of the last sample in the array(s)
+  float F_samp = 6;                                     // Sampling frequency in Hz
+}
+
+// GenericDataBlock encodes a set of DataArray messages containing sensor data (ideally collected at the same time)
+message GenericDataBlock {
+  repeated GenericDataArray values = 1;  // Set of values of different magnitudes (eg: orientation and linear acceleration in the past 0.1 seconds)
+}
+
+// XYZArray encodes an array with x, y and z values (eg: acceleration)
+message XYZArray {
+  repeated float x = 1 [(nanopb).max_count = 50]; // x-axis data
+  repeated float y = 2 [(nanopb).max_count = 50]; // y-axis data
+  repeated float z = 3 [(nanopb).max_count = 50]; // z-axis data
+}
+
+// QuatArray encodes an array of quaternions that specify an orientation over time
+message QuatArray {
+  repeated float w = 4 [(nanopb).max_count = 50]; // x-axis data
+  repeated float x = 1 [(nanopb).max_count = 50]; // x-axis data
+  repeated float y = 2 [(nanopb).max_count = 50]; // y-axis data
+  repeated float z = 3 [(nanopb).max_count = 50]; // z-axis data
+}
+
+// CalibrationStatus encodes the calibration status of different components of the sensor fusion algorithm (0=uncalibrated, 3=fully calibrated)
+message CalibrationStatus {
+  uint32 overall = 1;   // Calibration status of the sensor fusion algorithm
+  uint32 accel = 2;     // Calibration status of the accelerometer
+  uint32 gyro = 3;      // Calibration status of the gyroscope
+  uint32 mag = 4;       // Calibration status of the magnetometer
+}
+
+// DataBlock encodes a full chunk of sensor data from the BNO055 (includes all sensing magnitudes as well as calibration info, sampling frequency, message ID...)
+message DataBlock {
+  QuatArray orientation = 1;                // Device orientation in quaternion
+  XYZArray linearAccel = 2;                 // Linear acceleration in m/s^2
+  XYZArray gravity = 3;                     // Gravity direction in m/s^2
+  XYZArray accel = 4;                       // Total acceleration in m/s^2
+  XYZArray gyro = 5;                        // Angular acceleration in deg/sec
+  XYZArray mag = 6;                         // Magnetic field in uT
+  google.protobuf.Timestamp t_latest = 7;   // Timestamp of the last sample in the array(s)
+  float F_samp = 8;                         // Sampling frequency in Hz
+  uint32 id = 9;                            // Message ID (helps make sure we received them all)
+  CalibrationStatus calibStatus = 10;       // Calibration status of the sensor fusion algorithm
+}

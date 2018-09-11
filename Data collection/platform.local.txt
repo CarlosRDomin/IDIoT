@@ -1,0 +1,5 @@
+# Prevent errors of the form "dangerous relocation: l32r: literal placed after use":
+compiler.cpp.extra_flags=-mtext-section-literals
+
+# Prevent NanoPB complaining about field tags
+compiler.c.extra_flags=-DPB_FIELD_16BIT=1

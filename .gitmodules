@@ -1,0 +1,18 @@
+[submodule "esp32"]
+	path = Data collection/arduino-submodules/hardware/espressif/esp32
+	url = https://github.com/espressif/arduino-esp32.git
+[submodule "nanopb"]
+	path = Data collection/arduino-submodules/libraries/nanopb
+	url = https://github.com/nanopb/nanopb
+[submodule "esp32fs"]
+	path = Data collection/arduino-submodules/plugins/esp32fs
+	url = https://github.com/CarlosRDomin/arduino-esp32fs-plugin.git
+[submodule "Adafruit_BNO055"]
+	path = Data collection/arduino-submodules/libraries/Adafruit_BNO055
+	url = https://github.com/adafruit/Adafruit_BNO055.git
+[submodule "Adafruit_Sensor"]
+	path = Data collection/arduino-submodules/libraries/Adafruit_Sensor
+	url = https://github.com/adafruit/Adafruit_Sensor.git
+[submodule "ESPAsyncWebServer"]
+	path = Data collection/arduino-submodules/libraries/ESPAsyncWebServer
+	url = https://github.com/me-no-dev/ESPAsyncWebServer.git

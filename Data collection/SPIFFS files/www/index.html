@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <title>IoT pairing</title>
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <script src="helperFuncs.js"></script>
+    <link href="css/styles.css" rel="stylesheet">
+    <style>
+        h1, h2, h3, h4, h5, h6 {
+            margin: 0em;
+        }
+        #connecting {
+            margin-bottom: 0.5em;
+        }
+        #controls {
+            display: grid;
+            grid-template-columns: 350px auto 350px;
+            grid-column-gap: 50px;
+            justify-content: center;
+            align-items: center;
+        }
+        .rowHeader {
+            text-align: right;
+            padding-right: 15px;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="margin-bottom: 0.1em;">IoT pairing demo</h1>
+    <p><input type="text" id="wsHost" style="width: 200px;"><input type="button" value="(Re)connect" onClick="javascript: wsReconnect();" style="margin-left: 20px; width: 100px;"><input type="button" value="Close socket" onClick="javascript: wsClose();" style="margin-left: 10px; width: 100px;"></p>
+    <div id="renderer"></div>
+    <h3 id="connecting">Connecting...</h3>
+    <div id="controls">
+        <div style="justify-self: right;"><table>
+            <tr>
+                <td colspan="4"><h3>Calibration</h3><h5>(0=uncalibrated, 3=fully calibrated)</h5></td>
+            </tr>
+            <tr>
+                <td><h4>System</h4></td>
+                <td><h4>Accel</h4></td>
+                <td><h4>Gyro</h4></td>
+                <td><h4>Mag</h4></td>
+            </tr>
+            <tr>
+                <td><h4><span id="calOverall">0</span></h4></td>
+                <td><h4><span id="calAccel">0</span></h4></td>
+                <td><h4><span id="calGyro">0</span></h4></td>
+                <td><h4><span id="calMag">0</span></h4></td>
+            </tr>
+        </table></div>
+        <table>
+            <tr>
+                <td></td>
+                <td style="padding: 0 5px; min-width: 100px;"><h3>x/Heading</h3></td>
+                <td style="padding: 0 5px; min-width: 100px;"><h3>y/Roll</h3></td>
+                <td style="padding: 0 5px; min-width: 100px;"><h3>z/Pitch</h3></td>
+            </tr>
+            <tr>
+                <td class="rowHeader"><h3>Orientation:</h3></td>
+                <td><span id="orientation_h">0</span></td>
+                <td><span id="orientation_r">0</span></td>
+                <td><span id="orientation_p">0</span></td>
+            </tr>
+            <tr>
+                <td class="rowHeader"><h3>Linear accel:</h3></td>
+                <td><span id="linearAccel_x">0</span></td>
+                <td><span id="linearAccel_y">0</span></td>
+                <td><span id="linearAccel_z">0</span></td>
+            </tr>
+            <tr>
+                <td class="rowHeader"><h3>Gravity:</h3></td>
+                <td><span id="gravity_x">0</span></td>
+                <td><span id="gravity_y">0</span></td>
+                <td><span id="gravity_z">0</span></td>
+            </tr>
+            <tr>
+                <td class="rowHeader"><h3>Acceleration:</h3></td>
+                <td><span id="accel_x">0</span></td>
+                <td><span id="accel_y">0</span></td>
+                <td><span id="accel_z">0</span></td>
+            </tr>
+            <tr>
+                <td class="rowHeader"><h3>Gyroscope:</h3></td>
+                <td><span id="gyro_x">0</span></td>
+                <td><span id="gyro_y">0</span></td>
+                <td><span id="gyro_z">0</span></td>
+            </tr>
+            <tr>
+                <td class="rowHeader"><h3>Magnetometer:</h3></td>
+                <td><span id="mag_x">0</span></td>
+                <td><span id="mag_y">0</span></td>
+                <td><span id="mag_z">0</span></td>
+            </tr>
+        </table>
+        <div style="justify-self: left;">
+            <h3>Actions:</h3>
+            <div style="margin-bottom: 10px;"><label for="model">Model: <select id="model"></select></div>
+            <div style="display: flex; justify-content: space-around; width: 300px; margin: 0 auto;">
+                <button type="button" id="straighten">Straighten</button>
+                <button type="button" id="saveCalibration">Save Calibration</button>
+                <button type="button" id="loadCalibration">Load Calibration</button>
+            </div>
+        </div>
+    </div>
+    <fieldset style="width: 85%; margin: auto; margin-top: 10px;"><legend>Log</legend>
+		<div style="text-align: left; width:100%; padding: 5px; margin: 0 auto; max-height: 250px; overflow: auto;" id="textAreaLog"></div>
+		<p><input type="checkbox" checked id="chkAutoScrollLog"> <label for="chkAutoScrollLog">Auto-scroll</label><input type="button" onClick="javascript: clearLog();" value="Clear log" style="margin-left: 20px; width: 100px;"></p>
+	</fieldset>
+
+    <script src="js/protobuf.min.js"></script> <!-- From: http://cdn.rawgit.com/dcodeIO/protobuf.js/6.8.6/dist/protobuf.min.js -->
+    <script src="js/jquery.min.js"></script>
+    <script src="js/three.min.js"></script>
+    <script src="js/DDSLoader.js"></script>
+    <script src="js/MTLLoader.js"></script>
+    <script src="js/OBJLoader.js"></script>
+    <script src="js/STLLoader.js"></script>
+    <script>
+var ws;
+var DataBlock;
+var currOrientation = null;
+
+$(document).ready(function() {
+    // Configuration
+    // Set size of the WebGL renderer scene.
+    var sceneWidth = 640;
+    var sceneHeight = 480;
+    // Define list of 3D models.  Each item should have a name property that
+    // will be rendered in the drop down, and a load function that is called
+    // with the model instance and should add a model property with a Three.js
+    // scene graph object that will be rendered.
+    var models = [
+        {
+            name: 'Dice',
+            load: function (model) {
+                mtlLoader
+					.setPath('img/')
+					.load('dice.mtl', function (materials) {
+						materials.preload();
+						objLoader
+							.setMaterials(materials)
+							.setPath('img/')
+							.load('dice.obj', function (object) {
+                                model.model = object;
+                                model.model.scale.set(0.01, 0.01, 0.01);
+                                /*model.model.rotation.x = 20 * (Math.PI / 180.0);
+                                model.model.rotation.y = -45 * (Math.PI / 180.0);*/
+							});
+					} );
+            }
+        },
+        {
+            name: 'XYZ Axes',
+            load: function(model) {
+                // Build some cylinders and rotate them to form a cross of the XYZ axes.
+                model.model = new THREE.Group();
+                var xAxis = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 7, 32, 32), material);
+                xAxis.rotation.z = 90.0*(Math.PI/180.0);
+                model.model.add(xAxis);
+                var yAxis = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 7, 32, 32), material);
+                model.model.add(yAxis);
+                var zAxis = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 7, 32, 32), material);
+                zAxis.rotation.x = 90.0*(Math.PI/180.0);
+                model.model.add(zAxis);
+            }
+        }
+    ];
+
+    // Global state.
+    var offset = null;
+    var orientation = null;
+    var objLoader = new THREE.OBJLoader();
+    var mtlLoader = new THREE.MTLLoader();
+    var stlLoader = new THREE.STLLoader();
+    var currentModel = null;
+
+    // Start with main controls hidden until connected.
+    $('#controls').hide();
+
+    // Setup Three.js scene and camera.
+    var scene = new THREE.Scene();
+    var camera = new THREE.PerspectiveCamera(75, sceneWidth / sceneHeight, 0.1, 1000);
+    // Start with the camera moved back a bit to look directly at the origin.
+    camera.position.z = 10;
+
+    // Setup Three.js WebGL renderer and add it to the page.
+    var renderer = new THREE.WebGLRenderer();
+    renderer.setSize(sceneWidth, sceneHeight);
+    renderer.setClearColor(0xff0000, 0);
+    $('#renderer').append(renderer.domElement);
+    $('#renderer canvas').addClass('center-block');  // Center the renderer.
+
+    // Create white material for the models.
+    var material = new THREE.MeshPhongMaterial({ color: 0xffffff });
+
+    // Setup 3 point lighting with a red and blue point light in upper left
+    // and right corners, plus a bit of backlight from the rear forward.
+    var pointLight1 = new THREE.PointLight(0xffbbbb, 0.6);
+    pointLight1.position.set(40, 15, 40);
+    scene.add(pointLight1);
+    var pointLight2 = new THREE.PointLight(0xbbbbff, 0.6);
+    pointLight2.position.set(-40, 15, 40);
+    scene.add(pointLight2);
+    var backLight = new THREE.DirectionalLight(0xffff, 0.3);
+    backLight.position.set(0, -0.25, -1);
+    scene.add(backLight);
+
+    // Create a couple groups to apply rotations to the 3D model at different
+    // stages.  The outer group called offset is set to the reverse rotation
+    // of the current BNO orientation when the 'Straighten' button is clicked.
+    // This will force the model to center itself staring directly out of
+    // the screen.  The inner group called orientation will be rotated with
+    // the current BNO sensor orientation and cause the model to rotate.
+    offset = new THREE.Group();
+    orientation = new THREE.Group();
+    offset.add(orientation);
+    scene.add(offset);
+
+    // Main rendering function.
+    function render() {
+        requestAnimationFrame(render);
+        // Switch to the first model once it's loaded.
+        if (currentModel === null) {
+            if (models[0].hasOwnProperty('model')) {
+                currentModel = 0;
+                orientation.add(models[0].model);
+            }
+        }
+        // Update the orientation with the last BNO sensor reading quaternion.
+        if (currOrientation !== null) {
+            orientation.quaternion.copy(currOrientation);
+        }
+        renderer.render(scene, camera);
+    }
+    render();
+
+    // Populate drop-down of 3D models and load all the models..
+    $.each(models, function(index, model) {
+        // Populate drop-down.
+        $('#model').append($("<option />").val(index).text(model.name));
+        // Kick off loading the model.
+        model.load(model);
+    });
+
+    // Model list changed event.
+    $('#model').change(function() {
+        // Remove the old model.
+        orientation.remove(models[currentModel].model);
+        // Update the current model and add it to the scene.
+        currentModel = $('#model')[0].selectedIndex;
+        orientation.add(models[currentModel].model);
+    });
+
+    // Straighten button click handler.
+    $('#straighten').click(function() {
+        // Get the current orientation of the BNO sensor and compute its
+        // conjugate or reverse rotation and apply it to the offset group.
+        // This will reset the 3D model so that it faces directly forward based
+        // on the current BNO sensor orientation.
+        offset.quaternion.copy(currOrientation.conjugate());
+    });
+
+    // Save calibration click handler calls the /save_calibration API.
+    $('#saveCalibration').click(function() {
+        $.post("save_calibration");
+    });
+
+    // Load calibration click handler calls the /load_calibration API.
+    $('#loadCalibration').click(function() {
+        $.post("load_calibration");
+    });
+
+    var DEFAULT_HOST = "192.168.0.1";
+    $('#wsHost')[0].value = (window.location.hostname !== '')? window.location.hostname : DEFAULT_HOST;
+
+    // Communication-related setup
+    protobuf.load("protos/sensor_data.proto", function(err, root) {
+        if (err) throw err;
+
+        DataBlock = root.lookup("IoT.pairing.DataBlock");
+        wsReconnect();  // Open the webSocket once the proto has been loaded
+    });
+});
+
+function createWebSocket(connectTo) {
+    var lastMsgId = null;
+    ws = new WebSocket(connectTo);
+
+    ws.onopen = function() {
+        // WebSocket is connected
+        logMessage("Successfully connected to " + ws.url);
+        $('#connecting').hide();
+        $('#controls').show();
+        lastMsgId = null;	// Reset msgId counter
+    };
+
+    ws.onmessage = function(evt) {
+        convertBlobToBinArray(evt.data, 'uint8_t', (msgData)=> {
+            let msg = DataBlock.decode(msgData);
+            console.log(msg);
+            let numPacketsLost = (lastMsgId == null)? 0:(msg.id-lastMsgId-1);	// Should be 0 :)
+            if (numPacketsLost > 0) {	// msg.id should be lastMsgId+1, otherwise detect an error!
+                logMessage('WARNING: ' + numPacketsLost + ' packet(s) lost! (Last msg ID was ' + lastMsgId + '; current ID is ' + msg.id + ')');
+            }
+            lastMsgId = msg.id;
+
+            // Process data and display it
+            const nDecimals = 3;
+            let lastIdx = msg.orientation.x.length-1;
+            // Process orientation (convert quaternion to euler angles)
+            currOrientation = new THREE.Quaternion(msg.orientation.x[lastIdx], msg.orientation.y[lastIdx], msg.orientation.z[lastIdx], msg.orientation.w[lastIdx]);
+            let eulerOrientation = new THREE.Euler().setFromQuaternion(currOrientation);
+            $('#orientation_h').text((eulerOrientation.x*THREE.Math.RAD2DEG).toFixed(nDecimals));
+            $('#orientation_r').text((eulerOrientation.y*THREE.Math.RAD2DEG).toFixed(nDecimals));
+            $('#orientation_p').text((eulerOrientation.z*THREE.Math.RAD2DEG).toFixed(nDecimals));
+            // Update the other magnitudes
+            ['linearAccel', 'gravity', 'accel', 'gyro', 'mag'].forEach((magnitude) => {
+                ['x', 'y', 'z'].forEach((axis) => {
+                    $('#' + magnitude + '_' + axis).text(msg[magnitude][axis][lastIdx].toFixed(nDecimals));
+                });
+            });
+            // And the calibration status of the sensor fusion algorithm
+            ['overall', 'accel', 'gyro', 'mag'].forEach((type) => {
+                let capitalizeType = type.replace(/^\w/, c => c.toUpperCase()); // Eg: accel -> Accel (so we update the field calAccel)
+                $('#cal' + capitalizeType).text(msg.calibStatus[type]);
+            });
+        });
+    };
+
+    ws.onclose = function(event) {
+        // WebSocket is closed.
+        logMessage("WebSocket closed! - <i>" + getStrCloseReason(event.code) + "</i>", true);
+        $('#controls').hide();
+        $('#connecting').show();
+        wsReconnect();
+    };
+
+    ws.onerror = function(err) {
+        logMessage("Error in webSocket! Check closing message below for extra info");
+    };
+
+    return ws;
+}
+
+function wsClose() {
+    if (ws) ws.close();
+    ws = null;
+}
+
+function wsReconnect() {
+    wsClose();
+    ws = createWebSocket("ws://" + $('#wsHost')[0].value + "/data");
+}
+    </script>
+</body>
+</html>
