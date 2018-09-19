@@ -3,3 +3,5 @@
 *.pyc
 *.m~
 *.tar.gz
+DataCollection/setup.sh
+

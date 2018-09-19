@@ -2,3 +2,5 @@ pyserial
 coloredlogs
 verboselogs
 protobuf
+numpy
+h5py
