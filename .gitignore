@@ -4,4 +4,6 @@
 *.m~
 *.tar.gz
 DataCollection/setup.sh
+DataCollection/data/
+Rendered/
 

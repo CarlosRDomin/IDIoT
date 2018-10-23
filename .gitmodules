@@ -16,3 +16,6 @@
 [submodule "ESPAsyncWebServer"]
 	path = DataCollection/arduino-submodules/libraries/ESPAsyncWebServer
 	url = https://github.com/me-no-dev/ESPAsyncWebServer.git
+[submodule "OpenPose"]
+	path = Experiment postprocessing/openpose
+	url = https://github.com/CMU-Perceptual-Computing-Lab/openpose.git
