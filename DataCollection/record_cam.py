@@ -45,8 +45,6 @@ def record_cam(cam, out_folder='data', t_start=None, save_as_video=True):
     if save_as_video:
         video_filename = os.path.join(out_folder, "cam_{}_{}.mp4".format(cam, t_start))
         video_writer = cv2.VideoWriter(video_filename, cv2.VideoWriter_fourcc(*'avc1'), fps if fps > 0 else 25, frame_dimensions)  # Note: avc1 is Apple's version of the MPEG4 part 10/H.264 standard apparently
-        # logger.info("Bye")
-        # return
     logger.notice("Starting cam '{}' recording! Saving {}".format(cam, "as {}".format(video_filename) if save_as_video else "at {}".format(out_folder)))
 
     t_frames = []
