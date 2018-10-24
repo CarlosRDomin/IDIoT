@@ -188,8 +188,8 @@ class FrameProcessor:
 
         # Load the pose model
         load_pose_model(self.params)
-        if not params.pose.use_openpose:
-            self.resize_factor_for_nn = float(params.pose.net_resolution.split('x')[1]) / min(img_width, img_height)
+        if not self.params.pose.use_openpose:
+            self.resize_factor_for_nn = float(self.params.pose.net_resolution.split('x')[1]) / min(img_width, img_height)
 
         self.t_last_frame = datetime.now()
 

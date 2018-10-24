@@ -41,6 +41,9 @@ class ProcessImshow:
                 print('\t\tProcessImshow: {:.2f}ms'.format((datetime.now()-self.lastT).total_seconds()*1000))
             self.lastT = datetime.now()
 
+    def __del__(self):
+        cv2.destroyAllWindows()
+
 
 class ProcessImshowHelper:
     """
