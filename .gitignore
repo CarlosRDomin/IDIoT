@@ -5,5 +5,6 @@
 *.tar.gz
 DataCollection/setup.sh
 DataCollection/data/
+DataCollection/cam_calib*
 Rendered/
 
