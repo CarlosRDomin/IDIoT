@@ -3,7 +3,8 @@ from config import AllParams
 
 
 def run_demo():
-    params = AllParams("../DataCollection/data/2018-09-18 11-43-17/cam_1_2018-09-18 11-43-17.mp4")
+    t = "2018-11-01 16-52-23"
+    params = AllParams("../DataCollection/data/{t}/cam_1_{t}.mp4".format(t=t))
     fp = FrameProcessor(params)
     fp.run_demo()
 
