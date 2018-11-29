@@ -23,17 +23,17 @@ def init_fields_to_save():
     return fields_to_save
 
 
-def save_data_to_file(fields_to_save, out_base_folder, filename_prefix, t_start, F_samp):
+def save_data_to_file(fields_to_save, out_base_folder, experiment_t_start, filename_prefix, imu_t_start, F_samp):
     if F_samp <= 0:  # F_samp=0 means data was never collected -> Don't save an empty file!
         logger.warn("Nothing to save, skipping saving data to file")
         return
 
-    out_base_folder = os.path.join(out_base_folder, str(t_start)[:-7].replace(':', '-'))
+    out_base_folder = os.path.join(out_base_folder, str(experiment_t_start)[:-7].replace(':', '-'))
     os.makedirs(out_base_folder, exist_ok=True)  # Make sure base folder exists
-    out_filename = os.path.join(out_base_folder, "{}{}.h5".format(filename_prefix, str(t_start)[:-7].replace(':', '-')))
+    out_filename = os.path.join(out_base_folder, "{}{}.h5".format(filename_prefix, str(experiment_t_start)[:-7].replace(':', '-')))
     logger.info("Saving collected data at '{}'...".format(out_filename))
     with h5py.File(out_filename) as hf:
-        hf.attrs['t_start'] = str(t_start)
+        hf.attrs['t_start'] = str(imu_t_start)
         hf.attrs['F_samp'] = F_samp
         for field_name, field_children in fields_to_save.items():
             field_group = hf.create_group(field_name)
@@ -42,7 +42,10 @@ def save_data_to_file(fields_to_save, out_base_folder, filename_prefix, t_start,
     logger.success("Done! Collected data saved at '{}' :)".format(out_filename))
 
 
-def collect_BNO055_data(serial_port='/dev/cu.SLAB_USBtoUART', baud_rate=115200, out_base_folder='data', out_filename_prefix='BNO055_', t_start_queue=None):
+def collect_BNO055_data(experiment_t_start=None, serial_port='/dev/cu.SLAB_USBtoUART', baud_rate=115200, out_base_folder='data', out_filename_prefix='BNO055_', imu_ready_queue=None):
+    # NOTE: In order to allow for multiple simultaneous IMUs, experiment_t_start indicates the name of the enclosing folder where the data will be saved,
+    # and each one will have their own imu_t_start indicating the precise time when each IMU was rebooted (and therefore its data started logging)
+
     logger.info("Connecting to {}...".format(serial_port))
     s = serial.Serial(serial_port, baud_rate)
     logger.success("Successfully connected! Please reboot the ESP32")
@@ -50,7 +53,7 @@ def collect_BNO055_data(serial_port='/dev/cu.SLAB_USBtoUART', baud_rate=115200, 
     # Initialize variables
     fields_to_save = init_fields_to_save()
     data_block = SensorData.DataBlock()
-    t_start = None
+    imu_t_start = None
     F_samp = 0
 
     try:
@@ -62,10 +65,12 @@ def collect_BNO055_data(serial_port='/dev/cu.SLAB_USBtoUART', baud_rate=115200, 
                 logger.notice("Esp32 is done booting, collecting data until Ctrl+C is pressed!")
                 break
 
-        # Update t_start to the actual date the data collection started
-        t_start = datetime.now()
-        if t_start_queue is not None:  # Pass the current time through the queue to notify the main process to start recording the camera (and use t_start to create a folder)
-            t_start_queue.put(t_start)
+        # Update imu_t_start to the actual time the data collection started
+        imu_t_start = datetime.now()
+        if experiment_t_start is None:
+            experiment_t_start = imu_t_start  # If user didn't specify an experiment t_start, it's probably only collecting data for 1 IMU -> Use imu_t_start to name the data folder
+        if imu_ready_queue is not None:  # Pass the current time through the queue to notify the main process to start recording the camera
+            imu_ready_queue.put(imu_t_start)
 
         # Collect data (read samples and append them to fields_to_save)
         last_msg_id = None
@@ -95,17 +100,22 @@ def collect_BNO055_data(serial_port='/dev/cu.SLAB_USBtoUART', baud_rate=115200, 
     finally:
         # Close serial port and save all data to a file
         s.close()
-        save_data_to_file(fields_to_save, out_base_folder, out_filename_prefix, t_start, F_samp)
+        save_data_to_file(fields_to_save, out_base_folder, experiment_t_start, out_filename_prefix, imu_t_start, F_samp)
 
     logger.success("Goodbye from BNO055 data collection!")
 
 
 def main():
-    t_start_queue = Queue(1)
-    p = Process(target=collect_BNO055_data, kwargs={"t_start_queue": t_start_queue})
-    p.start()
-    t_start = t_start_queue.get()  # BLOCK until esp32 is rebooted and setup to collect data
-    record_cam(1, t_start=t_start)
+    T_START = datetime.now()
+    IMU_SERIAL_PORTS = ['/dev/cu.SLAB_USBtoUART']
+    imu_ready_queue = Queue(len(IMU_SERIAL_PORTS))
+    p = []
+    for i,port in enumerate(IMU_SERIAL_PORTS):
+        p.append(Process(target=collect_BNO055_data, kwargs={"experiment_t_start": T_START, "serial_port": port, "out_filename_prefix": 'BNO055_{}_'.format(i+1), "imu_ready_queue": imu_ready_queue}))
+        p[-1].start()
+    for i in range(len(p)):
+        imu_t_start = imu_ready_queue.get()  # BLOCK until all esp32s are rebooted and ready to collect data
+    record_cam(1, t_start=T_START)
     p.terminate()
     p.join()
     logger.success("Experiment done, bye!!")
