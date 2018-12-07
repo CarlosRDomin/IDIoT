@@ -3,6 +3,7 @@ import numpy as np
 from config import AllParams
 from process_helpers import ProcessImshowHelper
 from paf_to_pose import paf_to_pose, plot_pose, people_to_pose
+from lift_2D_to_3D import Helper2Dto3Dpose
 from scipy.optimize import linear_sum_assignment
 from collections import deque
 from enum import Enum
@@ -11,7 +12,7 @@ import os
 import h5py
 
 
-class JointEnum(Enum):
+class JointEnumCOCO(Enum):
     NOSE = 0
     NECK = 1
     RSHOULDER = 2
@@ -30,6 +31,35 @@ class JointEnum(Enum):
     LEYE = 15
     REAR = 16
     LEAR = 17
+
+
+class JointEnum(Enum):
+    NOSE = 0
+    NECK = 1
+    RSHOULDER = 2
+    RELBOW = 3
+    RWRIST = 4
+    LSHOULDER = 5
+    LELBOW = 6
+    LWRIST = 7
+    MIDHIP = 8
+    RHIP = 9
+    RKNEE = 10
+    RANKLE = 11
+    LHIP = 12
+    LKNEE = 13
+    LANKLE = 14
+    REYE = 15
+    LEYE = 16
+    REAR = 17
+    LEAR = 18
+    LBIGTOE = 19
+    LSMALLTOE = 20
+    LHEEL = 21
+    RBIGTOE = 22
+    RSMALLTOE = 23
+    RHEEL = 24
+    BACKGND = 25
 
 
 class MultiPersonTracker:
@@ -85,19 +115,20 @@ class MultiPersonTracker:
         self.last_bboxes = bboxes
 
 
-class MultiWristTracker:
+class MultiPersonJointTracker:
     """
-     Helper class to plot a trail with the history positions of a given joint (e.g. wrist)
+     Helper class to plot a trail with the history positions of a given joint (e.g. wrist).
+     Can simultaneously track that joint for multiple people, displaying independent point trails.
     """
 
-    def __init__(self, limb_to_track=JointEnum.RWRIST.value, buff_size=40):
-        self.limb_to_track = limb_to_track
+    def __init__(self, joint_to_track=JointEnum.RWRIST.value, buff_size=40):
+        self.joint_to_track = joint_to_track
         self.buff_size = buff_size
         self.trajectories = {'IDs': [], 'pts_deques': []}
 
     def update_trajectory(self, ind_trajectory, id, joint_list, person_to_joint_assoc):  # Finds the RWRIST of person with ID id, and appendsleft the coordinates to pts_deques[ind_trajectory]
         found = np.where(person_to_joint_assoc[:, -1] == id)[0]
-        joint_idx = int(person_to_joint_assoc[found[0], self.limb_to_track]) if len(found) > 0 else -1
+        joint_idx = int(person_to_joint_assoc[found[0], self.joint_to_track]) if len(found) > 0 else -1
         self.trajectories['pts_deques'][ind_trajectory].appendleft(tuple(joint_list[joint_idx, 0:2].astype(int)) if joint_idx >= 0 else None)
 
     def update(self, joint_list, person_to_joint_assoc):
@@ -129,10 +160,13 @@ class FrameProcessor:
     def __init__(self, params=None):
         self.params = params if params is not None else AllParams()
         self.person_tracker = MultiPersonTracker()
-        self.wrist_tracker = MultiWristTracker()
+        self.wrist_tracker = MultiPersonJointTracker()
         self.pilot_bbox = None
         self.person_to_joint_assoc = None
         self.joint_list = None
+        self.fields_to_save = ("person_to_joint_assoc", "joint_list")  # What fields to save in the h5 file
+        if self.params.pose.lift_2Dto3D:
+            self.fields_to_save += ("joint_list_3D",)  # Also save joint_list_3D in the h5 file
         self.frame_num = 0
         self.fps = None
         self.filename_prefix = "cam_{}_{}".format(self.params.io.video_input, self.params.io.datetime_to_str(datetime.now())) if isinstance(self.params.io.video_input, int) else self.params.io.video_input.rsplit('.',1)[0]
@@ -142,7 +176,7 @@ class FrameProcessor:
             self.params.io.pose_h5_file_handle = h5py.File(self.filename_prefix + ".h5", 'a')  # Open file in append mode
 
             # First make sure we overwrite "params", "person_to_joint_assoc", "joint_list" (delete if already existed, to avoid problems/conflicts)
-            for group in ("params", "person_to_joint_assoc", "joint_list"):
+            for group in ("params",)+self.fields_to_save:
                 if group in self.params.io.pose_h5_file_handle:
                     del self.params.io.pose_h5_file_handle[group]  # OVERWRITE (delete if already existed)
 
@@ -157,8 +191,8 @@ class FrameProcessor:
                     group.attrs[n] = v if v is not None else "None"  # Save param value as attribute
 
             # Last, initialize person_to_joint_assoc and joint_list groups
-            self.params.io.pose_h5_file_handle.create_group("person_to_joint_assoc")
-            self.params.io.pose_h5_file_handle.create_group("joint_list")
+            for group in self.fields_to_save:
+                self.params.io.pose_h5_file_handle.create_group(group)
 
         # Make sure "./Rendered/" folder exists (if save_render_as_video=False)
         imshow_helper_filename = self.params.io.TEMP_FILENAME
@@ -186,10 +220,15 @@ class FrameProcessor:
         if self.params.io.save_rendered_output and self.params.io.save_render_as_video:
             self.video_out = cv2.VideoWriter(self.get_rendered_frame_filename(), cv2.VideoWriter_fourcc(*'avc1'), fps if fps > 0 else 25, (img_width, img_height))  # Note: avc1 is Apple's version of the MPEG4 part 10/H.264 standard apparently
 
-        # Load the pose model
+        # Load the 2D pose model
         load_pose_model(self.params)
         if not self.params.pose.use_openpose:
             self.resize_factor_for_nn = float(self.params.pose.net_resolution.split('x')[1]) / min(img_width, img_height)
+
+        # Load the 2D->3D model
+        if self.params.pose.lift_2Dto3D:
+            self.helper_2Dto3D = Helper2Dto3Dpose()
+            self.joint_list_3D = None
 
         self.t_last_frame = datetime.now()
 
@@ -260,8 +299,21 @@ class FrameProcessor:
         self.person_to_joint_assoc = find_same_person(self.pilot_bbox, self.joint_list, self.person_to_joint_assoc)  # Reorder person_to_joint_assoc based on overlap with pilot_bbox
         self.person_tracker.update(self.joint_list, self.person_to_joint_assoc)  # Assign same ID to people that appeared on last frame
         self.wrist_tracker.update(self.joint_list, self.person_to_joint_assoc)  # Track each person's wrist
-        self.wrist_tracker.plot(self.img_out)  # Plot a trail of points with the history of wrist positions
+        if self.params.pose.plot_wrist_trail: self.wrist_tracker.plot(self.img_out)  # Plot a trail of points with the history of wrist positions
         self.pilot_bbox = draw_bbox(self.img_out, self.joint_list, self.person_to_joint_assoc, True)  # And add a bounding-box around the main target
+
+        # Estimate 3D position of joints if requested
+        if self.params.pose.lift_2Dto3D:
+            self.joint_list_3D = self.joint_list.copy()  # Initialize the 3D joint list as a copy of the 2D one. Then, we'll replace the first 3 columns (u,v,confidence) by the estimated (x,y,z)
+            # self.joint_list_3D[:, :3] = 0
+            for person_info in self.person_to_joint_assoc:
+                pose_2D = np.zeros((len(person_info)-2, 3))  # num_joints x 3 (x,y,confidence)
+                person_to_joint_assoc_inds = np.hstack((person_info[:-2]>-1, [False,False]))  # Boolean 1xnum_joints+2 (usually 1x25+2) indicating which indices in person_info=self.person_to_joint_assoc[i,:] point to valid 2D joints found by the pose model
+                valid_joint_ids = person_info[person_to_joint_assoc_inds].astype(np.int)
+                pose_2D[person_to_joint_assoc_inds[:-2],:] = self.joint_list[valid_joint_ids, :3]  # Fill in pose_2D with (x,y,c) from valid joints (leave the others at 0)
+                self.helper_2Dto3D.process_2D(pose_2D.reshape((1,-1)))  # Process 2D and get 3D estimations (reshape input as a row vector, that's the expected format)
+                pose_3D = self.helper_2Dto3D.data_3D.reshape(pose_2D.shape)  # Reshape output back to num_jointsx3
+                self.joint_list_3D[valid_joint_ids, :3] = pose_3D[person_to_joint_assoc_inds[:-2],:]  # Update the joints that were valid (found in the image) with the (x,y,z) values estimated by the model
 
         t2 = datetime.now()
         if False:
@@ -270,7 +322,7 @@ class FrameProcessor:
     def save_frame_results(self):
         # Save pose results to the file (if needed)
         if self.params.io.pose_h5_file_handle is not None:
-            for pose_field in ("person_to_joint_assoc", "joint_list"):
+            for pose_field in self.fields_to_save:
                 field_h5_group = self.params.io.pose_h5_file_handle[pose_field]
                 field_h5_group.create_dataset(self.params.io.FRAME_FILENAME_FORMAT.format(self.frame_num), data=getattr(self, pose_field))
 
@@ -443,6 +495,10 @@ def draw_bbox(canvas, joint_list, person_to_joint_assoc, bool_plot=True, bool_pl
     COLOR_NOT_PILOT = (0, 0, 255)
     THICKNESS_PILOT     = 2
     THICKNESS_NOT_PILOT = 1
+
+    # 12/2/18 update: plot all bboxes the same way for visualization (no notion of 'pilot' for ID-IoT)
+    COLOR_NOT_PILOT = COLOR_PILOT
+    THICKNESS_PILOT = THICKNESS_NOT_PILOT
 
     pilot_bbox = None
     for person_ind, person in enumerate(person_to_joint_assoc):
