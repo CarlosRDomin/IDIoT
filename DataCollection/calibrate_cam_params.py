@@ -80,7 +80,7 @@ def take_calibration_images(cam_id=0):
 	while True:
 		ret, cam_frame = v.read()
 		assert ret, "Couldn't grab a frame from cam {}".format(cam_id)
-		cv2.imshow(win_title, cam_frame)
+		cv2.imshow(win_title, cv2.resize(cam_frame, dsize=None, fx=0.5, fy=0.5))
 
 		key = cv2.waitKeyEx(1)
 		if key == ord(' '):  # Save a new image when Space is pressed

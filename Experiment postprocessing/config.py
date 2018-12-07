@@ -4,11 +4,13 @@ import numpy as np
 class PoseParams:
     """ Structure that holds the configuration parameters for the human pose model """
 
-    def __init__(self, gpus=None, plot_skeletons=True, use_gpu_postprocess=False, use_openpose=True, output_resolution="-1x-1", model_pose="BODY_25", default_model_folder="openpose/models/"):
+    def __init__(self, gpus=None, plot_skeletons=True, plot_wrist_trail=False, use_gpu_postprocess=False, lift_2Dto3D=True, use_openpose=True, output_resolution="-1x-1", model_pose="BODY_25", default_model_folder="openpose/models/"):
         self.model = None  # Variable that will hold the pose model on which we call .forward(img)
         self.gpus = gpus if gpus is not None else [0]  # GPU(s) to use for running the NN model
         self.use_gpu_postprocess = use_gpu_postprocess  # (Ignored if use_openpose=True) Determines whether the postprocessing&plotting of pose is ran on GPU (True) or CPU (False)
         self.plot_skeletons = plot_skeletons  # Whether or not to draw skeletons on top of people
+        self.plot_wrist_trail = plot_wrist_trail  # Whether or not to draw a red trail with the history position of each person's R_wrist
+        self.lift_2Dto3D = lift_2Dto3D  # True if we also want to estimate 3D position of all the joints
         self.use_openpose = use_openpose  # True for OpenPose CPM's model, False for Ying's model
 
         # Params needed by OpenPose:
@@ -60,7 +62,7 @@ class InOutParams:
 class AllParams:
     """ Structure that holds the configuration parameters for the overall project """
 
-    def __init__(self, video_input=0, use_openpose=True, pose=None, cam=None, io=None):
-        self.pose = pose if pose is not None else PoseParams(use_openpose=use_openpose)  # Pose params
+    def __init__(self, video_input=0, lift_2Dto3D=True, use_openpose=True, pose=None, cam=None, io=None):
+        self.pose = pose if pose is not None else PoseParams(lift_2Dto3D=lift_2Dto3D, use_openpose=use_openpose)  # Pose params
         self.cam = cam if cam is not None else CamParams()  # Camera params
         self.io = io if io is not None else InOutParams(video_input=video_input)  # IO params

@@ -1,11 +1,14 @@
 % This file contains the math and optimization solver code to find the best rotation matrix R that makes fIoT be as parallel as possible to the plane whose normal is defined by nCamOrientation
 
 function R = findBest3Drotation(nCamOrientation, orientationIoT)
-	[q,bestScore,exitFlag,output] = fmincon(@(q) sum(abs(dot(nCamOrientation, rotateframe(quaternion(q), orientationIoT), 2))), ...
+	validInds = ~isnan(nCamOrientation(:,1));  % Only take into account measurements where the camera sees the body part
+	nCamOrientation = nCamOrientation(validInds,:);
+	orientationIoT = orientationIoT(validInds,:);
+	[q,bestScore,exitFlag,output] = fmincon(@(q) computeSimilarityScore(nCamOrientation, rotatepoint(quaternion(q), orientationIoT)), ...  % sum(abs(dot(nCamOrientation, rotateframe(quaternion(q), orientationIoT), 2).^2), 'omitNaN')
 		[1 0 0 0],[],[],[],[],[],[], ...
-		@getNonLinearConstraints, optimoptions('fmincon', 'FunctionTolerance',1e-6, 'StepTolerance',1e-6, 'OptimalityTolerance',1e-8, 'SpecifyConstraintGradient',false)); %, 'StepTolerance',1e-3, 'Algorithm','sqp', 'FunctionTolerance',1e-3, 'UseParallel',true, 'Display','iter-detailed'));
+		@getNonLinearConstraints, optimoptions('fmincon', 'FunctionTolerance',1e-9, 'StepTolerance',1e-9, 'OptimalityTolerance',1e-10, 'SpecifyConstraintGradient',false, 'Display','off')); %, 'StepTolerance',1e-3, 'Algorithm','sqp', 'FunctionTolerance',1e-3, 'UseParallel',true, 'Display','iter-detailed'));
 	
-	R = rotmat(quaternion(q), 'frame');
+	R = rotmat(quaternion(q), 'point');
 end
 
 function [C, Ceq, gradC, gradCeq] = getNonLinearConstraints(q)
