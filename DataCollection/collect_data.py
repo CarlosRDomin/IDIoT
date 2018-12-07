@@ -1,5 +1,6 @@
 import struct
 import serial
+import glob
 import numpy as np
 import h5py
 import os
@@ -107,17 +108,27 @@ def collect_BNO055_data(experiment_t_start=None, serial_port='/dev/cu.SLAB_USBto
 
 def main():
     T_START = datetime.now()
-    IMU_SERIAL_PORTS = ['/dev/cu.SLAB_USBtoUART']
-    imu_ready_queue = Queue(len(IMU_SERIAL_PORTS))
+    IMU_SERIAL_PORTS = glob.glob('/dev/cu.SLAB_USBtoUART*')  # ['/dev/cu.SLAB_USBtoUART', '/dev/cu.SLAB_USBtoUART9']
+    imu_ready_queue = Queue(len(IMU_SERIAL_PORTS))  # Use a queue (multi-process safe) to communicate when each process is ready to collect data (esp32 was restarted)
+
+    # Start one process per IMU (each BNO055 is connected to its own esp32)
     p = []
     for i,port in enumerate(IMU_SERIAL_PORTS):
         p.append(Process(target=collect_BNO055_data, kwargs={"experiment_t_start": T_START, "serial_port": port, "out_filename_prefix": 'BNO055_{}_'.format(i+1), "imu_ready_queue": imu_ready_queue}))
         p[-1].start()
+
+    # BLOCK until all esp32s are rebooted and ready to collect data
     for i in range(len(p)):
-        imu_t_start = imu_ready_queue.get()  # BLOCK until all esp32s are rebooted and ready to collect data
+        imu_t_start = imu_ready_queue.get()
+
+    # Start recording video
     record_cam(1, t_start=T_START)
-    p.terminate()
-    p.join()
+
+    # When record_cam exits (KeyboardInterrupt), terminate all IMU processes and exit
+    for pp in p:
+        pp.terminate()  # Send a KeyboardInterrupt to each process running collect_BNO055_data
+    for pp in p:
+        pp.join()  # Wait for all processes to terminate
     logger.success("Experiment done, bye!!")
 
 
