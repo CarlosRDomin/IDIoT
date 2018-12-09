@@ -5,31 +5,33 @@ function [scoreIMUtoCamBodyPart, bodyPartToJointsAssoc] = computeSimilarityMatri
 	
 	namesIMUs = setdiff(fieldnames(dataIMU), 'params', 'stable');  % Take all the IMUs (remove the field 'params'). 'stable' keeps the original ordering of fieldnames(dataIMU).
 	extraPairs = [{'Ankle', 'SmallToe'}; {'Heel', 'BigToe'}; {'Heel', 'SmallToe'}; {'BigToe', 'SmallToe'}];
-	scoreIMUtoCamBodyPart = ones(length(namesIMUs), length(bodyPartToJointsAssoc)+2*length(extraPairs)+1);
+	scoreIMUtoCamBodyPart = ones(length(namesIMUs), length(bodyPartToJointsAssoc));  % +2*length(extraPairs)+1
 	w = waitbar(0, 'Computing similarity matrix, this might take a while...');
 	for iIMU = 1:length(namesIMUs)
 		for iBodyJointPair = 1:length(bodyPartToJointsAssoc)
 			if useResamp
-				pos2Dname = 'pos2Dresamp'; pos2Dname = 'pos2D';
-				orientationIMU = dataIMU.(namesIMUs{iIMU}).forwardResamp;
+				pos2Dname = 'pos2Dresamp';
+				orientationIMU = dataIMU.(namesIMUs{iIMU}).quatResamp;
 			else
 				pos2Dname = 'pos2D';
-				orientationIMU = rotatepoint(dataIMU.(namesIMUs{iIMU}).quat, [1 0 0]);
+				orientationIMU = dataIMU.(namesIMUs{iIMU}).quat;
 			end
 			scoreIMUtoCamBodyPart(iIMU, iBodyJointPair) = find_shift_and_alignment([dataCam.camPos(personID).(bodyPartToJointsAssoc(iBodyJointPair).joint1).(pos2Dname) dataCam.camPos(personID).(bodyPartToJointsAssoc(iBodyJointPair).joint2).(pos2Dname)], orientationIMU, dataCam.params.cam.intrinsicMat, 0);
 		end
 		
-		% Test: which joints are better for the feet?
-		lr = {'l', 'r'};
-		for j = 1:length(lr)
-			lrStr = lr{j};
-			for i = 1:length(extraPairs)
-				scoreIMUtoCamBodyPart(iIMU, length(bodyPartToJointsAssoc)+(j-1)*length(extraPairs)+i) = find_shift_and_alignment([dataCam.camPos(personID).([lrStr extraPairs{i,1}]).(pos2Dname) dataCam.camPos(personID).([lrStr extraPairs{i,2}]).(pos2Dname)], orientationIMU, dataCam.params.cam.intrinsicMat, 0);
+		if false
+			% Test: which joints are better for the feet?
+			lr = {'l', 'r'};
+			for j = 1:length(lr)
+				lrStr = lr{j};
+				for i = 1:length(extraPairs)
+					scoreIMUtoCamBodyPart(iIMU, length(bodyPartToJointsAssoc)+(j-1)*length(extraPairs)+i) = find_shift_and_alignment([dataCam.camPos(personID).([lrStr extraPairs{i,1}]).pos2D dataCam.camPos(personID).([lrStr extraPairs{i,2}]).pos2D], orientationIMU, dataCam.params.cam.intrinsicMat, 0);
+				end
 			end
+
+			% Test: is neck-midHip better for sternum/waist?
+			scoreIMUtoCamBodyPart(iIMU, end) = find_shift_and_alignment([dataCam.camPos(personID).neck.pos2D dataCam.camPos(personID).midHip.pos2D], orientationIMU, dataCam.params.cam.intrinsicMat, 0);
 		end
-		
-		% Test: is neck-midHip better for sternum/waist?
-		scoreIMUtoCamBodyPart(iIMU, end) = find_shift_and_alignment([dataCam.camPos(personID).neck.(pos2Dname) dataCam.camPos(personID).midHip.(pos2Dname)], orientationIMU, dataCam.params.cam.intrinsicMat, 0);
 		
 		% Computing the matrix takes up to a minute, show progress :)
 		waitbar(iIMU/length(namesIMUs), w, sprintf('IMUs processed: %2d/%d', iIMU, length(namesIMUs)));
