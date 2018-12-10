@@ -1,21 +1,22 @@
 addpath(genpath('.'));	% Make sure all folders and subfolders are added to the path
 cdToThisScriptsDirectory();	% Change directory to the folder containing this script
 DATA_FOLDER = '../TotalCapture';
-
-%% Load h5 files and process each person's joint positions from camera and IMU orientation
+FIGURE_FOLDER = '../Paper';
 dt = 1/60;  % The dataset is fully synchronized at 60fps
 bodyPartToJointsAssoc = cell2struct([{'Head', 'rEye','lEye'}; {'Sternum', 'rShoulder','lShoulder'}; {'Pelvis', 'rHip','lHip'}; {'L_UpArm', 'lShoulder','lElbow'}; {'R_UpArm', 'rShoulder','rElbow'}; {'L_LowArm', 'lElbow','lWrist'}; {'R_LowArm', 'rElbow','rWrist'}; {'L_UpLeg', 'lHip','lKnee'}; {'R_UpLeg', 'rHip','rKnee'}; {'L_LowLeg', 'lKnee','lAnkle'}; {'R_LowLeg', 'rKnee','rAnkle'}; {'L_Foot', 'lAnkle','lBigToe'}; {'R_Foot', 'rAnkle','rBigToe'}], {'bodyPart', 'joint1', 'joint2'}, 2);
-camCalib = readTotalCaptureCamCalib('../TotalCapture/camCalibration.txt');
+camCalib = readTotalCaptureCamCalib([DATA_FOLDER '/camCalibration.txt']);
 reloadData = false;
-for iSubj = 2:2
+
+%% Load h5 files and process each person's joint positions from camera and IMU orientation
+for iSubj = 1:5
 	folderPrefix = [DATA_FOLDER '/s' num2str(iSubj)];  % Folder where all the data for subject s_i is
-	activities = {'walking1'};
+	activities = {'acting1', 'acting2', 'acting3', 'freestyle1', 'freestyle2', 'freestyle3', 'rom1', 'rom2', 'rom3', 'walking1', 'walking2', 'walking3'};
 	for iActivity = 1:length(activities)
 		activity = activities{iActivity};
 		activityIMUfile = [folderPrefix '/' activity '_Xsens_AuxFields.sensors'];
 		activityProcessedFile = [folderPrefix '/' activity '_processed.mat'];
 		if exist([folderPrefix '/' activity], 'file')~=7  || exist(activityIMUfile, 'file')~=2  % Make sure folder exists (folder=7) as well as IMU data (file=2)
-			fprintf('Couldn''t find folder %s or file %s_Xsens_AuxFields.sensors for subject s%d', activity, activity, iSubj);
+			fprintf('Couldn''t find folder %s or file %s_Xsens_AuxFields.sensors for subject s%d\n', activity, activity, iSubj);
 			continue;
 		end
 		
@@ -30,26 +31,54 @@ for iSubj = 2:2
 		namesIMUs = setdiff(fieldnames(dataIMU), 'params', 'stable');
 		t = 0 : dt : (length(dataIMU.(namesIMUs{1}).quat)-1)*dt;
 
-		for iCam = 1:1
+		for iCam = 1:8
 			% Process cam data if needed (otherwise it has already been loaded)
 			activityCamFile = [folderPrefix '/' activity '/TC_S' num2str(iSubj) '_' activity '_cam' num2str(iCam) '.h5'];
 			if needToProcessData || length(dataCams)<iCam
 				if exist(activityCamFile, 'file')~=2  % Make sure cam file exists (I haven't processed some camera angles [on purpose]) otherwise just ignore this
-					fprintf('Couldn''t find file %s, skipping!', activityCamFile);
+					fprintf('Couldn''t find file %s, skipping!\n', activityCamFile);
 					continue;
 				end
-				dataCams(iCam) = getPosFromCam(activityCamFile);
-				dataCams(iCam).fps = 1/dt;
-				dataCams(iCam).params.cam = camCalib(iCam);
+				aux = getPosFromCam(activityCamFile);
+				aux.fps = 1/dt;
+				aux.params.cam = camCalib(iCam);
+				dataCams(iCam) = aux;
 				save(activityProcessedFile, 'dataIMU', 'dataCams');
 			end
+			continue;  % TEMPORARY, DELETE AFTER PROCESSING DATASET
 
-			[scoreIMUtoCamBodyPart, bodyPartToJointsAssoc] = computeSimilarityMatrix(dataIMU, dataCams(iCam));
+			[scoreIMUtoCamBodyPart, bodyPartToJointsAssoc] = computeSimilarityMatrix(dataIMU, dataCams(iCam), [], [], 1);
 			normalizedScore = sinkhornKnopp(scoreIMUtoCamBodyPart(1:13,1:13));
-			a = assignDetectionsToTracks(scoreIMUtoCamBodyPart, 1);
+			a = assignDetectionsToTracks(scoreIMUtoCamBodyPart, max(scoreIMUtoCamBodyPart(:))+1);
 			assignedCamBodyPart = zeros(1,length(a)); assignedCamBodyPart(a(:,1))=a(:,2);
-			figure; imshow(scoreIMUtoCamBodyPart, 'InitialMagnification',10000); colormap(jet);
-			figure; for i = 1:length(bodyPartToJointsAssoc), [m,j]=min(scoreIMUtoCamBodyPart(i,:)); subplot(length(bodyPartToJointsAssoc),1,i); plot(rad2deg(scoreIMUtoCamBodyPart(i,:))); hold on; plot(i,0, 'g*', 'MarkerSize',20); plot(j,m, 'r*', 'MarkerSize',20); plot(assignedCamBodyPart(i),0, 'b*', 'MarkerSize',20); ylim([0 15]); xlim([0 size(scoreIMUtoCamBodyPart,2)+1]); title(bodyPartToJointsAssoc(i).bodyPart); end
+			figure; imshow((max(scoreIMUtoCamBodyPart(:))-scoreIMUtoCamBodyPart)./(max(scoreIMUtoCamBodyPart(:))-min(scoreIMUtoCamBodyPart(:))), 'InitialMagnification',10000); colormap('bone');
+			figure; imshow((max(normalizedScore(:))-normalizedScore)./(max(normalizedScore(:))-min(normalizedScore(:))), 'InitialMagnification',10000); colormap('bone');
+			figure; for i = 1:length(bodyPartToJointsAssoc), [m,j]=min(scoreIMUtoCamBodyPart(i,:)); subplot(length(bodyPartToJointsAssoc),1,i); plot(scoreIMUtoCamBodyPart(i,:)); hold on; plot(i,0, 'g*', 'MarkerSize',20); plot(j,m, 'r*', 'MarkerSize',20); plot(assignedCamBodyPart(i),0, 'b*', 'MarkerSize',20); ylim([0,1]); xlim([0 size(scoreIMUtoCamBodyPart,2)+1]); title(bodyPartToJointsAssoc(i).bodyPart); end
+		end
+	end
+end
+return;
+
+%% Plot example confusion matrices
+legendStr = {'IDIoT', '3D accel matching', '3D orientation matching'};
+outputFigFilenames = {'confusionIDIoT', 'confusion3Daccel', 'confusion3Dorient'};
+for activity = {'rom1', 'walking1', 'acting1', 'freestyle1'}
+	load([DATA_FOLDER '/s1/' activity{:} '_processed.mat']);
+	windowLengths = 5:5:30;
+	personID = 1;
+	bodyPartToJointsAssocInds = 4:7;  % {'L_UpArm', 'R_UpArm', 'L_LowArm', 'R_LowArm'}
+	t = (0:(length(dataCams(1).camPos(personID).rWrist.pos2D)-1))./dataCams(1).fps;
+	for iW = 1:length(windowLengths)
+		tEnd = windowLengths(iW);
+		tInds = (t < tEnd);
+		for iMethod = 1:3
+			outputFigFilename = [outputFigFilenames{iMethod} '_' activity{:} '_t' num2str(tEnd)];
+			xLabelStr = sprintf('Confusion matrix after t=%ds for %s', tEnd, legendStr{iMethod});
+			confusionMatrix = computeSimilarityMatrix(dataIMU, dataCams(1), personID, false, iMethod, bodyPartToJointsAssocInds, bodyPartToJointsAssocInds, tInds);
+			h = figure('Name', xLabelStr); imshow(confusionMatrix, 'InitialMagnification',10000); colormap(flipud(gray));
+			caxis([0, max(0.1, max(confusionMatrix(:)))]); colorbar;
+			savefig(h, [FIGURE_FOLDER '/' outputFigFilename '.fig']);
+			saveas(h, [FIGURE_FOLDER '/' outputFigFilename '.eps'], 'epsc');
 		end
 	end
 end
@@ -142,11 +171,15 @@ for i = 1:length(t)
 end
 
 %% Visualize orientation together with video
+personID=1; iCam=1;iIMU=7;iBodyJointPair=8;
+posCamJoints = [dataCams(iCam).camPos(personID).(bodyPartToJointsAssoc(iBodyJointPair).joint1).pos2D dataCams(iCam).camPos(personID).(bodyPartToJointsAssoc(iBodyJointPair).joint2).pos2D];
+[score, qOffset, vAxis, nCamOrientationShifted, orientationIoTshifted, orientationIoTtoCamShifted, deltaT] = find_shift_and_alignment(posCamJoints, dataIMU.(namesIMUs{iIMU}).quat, dataCams(iCam).params.cam.intrinsicMat, 0);
+IMUlocation = 'R_LowArm';
+visualizeCamIMUpair(t, orientationIoTtoCamShifted, nCamOrientationShifted, posCamJoints, [], vAxis);
+return;
+
 % Setup 3D orientation figure
 figure('Name', 'IMU orientation');
-personID=1; iCam=1;iIMU=7;iBodyJointPair=7;
-[score, R, nCamOrientationShifted, ~, orientationIoTtoCamShifted] = find_shift_and_alignment([dataCams(iCam).camPos(personID).(bodyPartToJointsAssoc(iBodyJointPair).joint1).pos2D dataCams(iCam).camPos(personID).(bodyPartToJointsAssoc(iBodyJointPair).joint2).pos2D], rotatepoint(dataIMU.(namesIMUs{iIMU}).quat, [1 0 0]), dataCams(iCam).params.cam.intrinsicMat, 0);
-IMUlocation = 'R_LowArm';
 v = VideoReader([folderPrefix '/' activity '/TC_S' num2str(iSubj) '_' activity '_cam' num2str(iCam) '_rendered.mp4']);
 
 subplot(3,6,[1,14]); hold on; grid on; S = [5 2 3]/5; % Cube dimensions

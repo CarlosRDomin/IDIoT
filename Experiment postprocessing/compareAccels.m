@@ -130,16 +130,16 @@ end
 %%
 personID = 1;
 [scoreIMUtoCamBodyPart, bodyPartToJointsAssoc] = computeSimilarityMatrix(dataIMU, dataCam, personID, true);
-a = assignDetectionsToTracks(scoreIMUtoCamBodyPart, 1);
-assignedCamBodyPart = zeros(1,length(a)); assignedCamBodyPart(a(:,1))=a(:,2);
 figure; imshow(scoreIMUtoCamBodyPart, 'InitialMagnification',10000); colormap(jet);
-figure; for i = 1:length(bodyPartToJointsAssoc), [m,j]=min(scoreIMUtoCamBodyPart(i,:)); subplot(length(bodyPartToJointsAssoc),1,i); plot(rad2deg(scoreIMUtoCamBodyPart(i,:))); hold on; plot(i,0, 'g*', 'MarkerSize',20); plot(j,m, 'r*', 'MarkerSize',20); plot(assignedCamBodyPart(i),0, 'b*', 'MarkerSize',20); ylim([0 15]); xlim([0 size(scoreIMUtoCamBodyPart,2)+1]); title(bodyPartToJointsAssoc(i).bodyPart); end
+figure; [m,j]=min(scoreIMUtoCamBodyPart); plot(scoreIMUtoCamBodyPart); hold on; plot(j,m, 'r*', 'MarkerSize',20); xlim([1 size(scoreIMUtoCamBodyPart,2)]);
 
 %%
-joints = {'rElbow', 'rWrist'};
+joints = {'rElbow', 'rWrist'}; %joints = {'lAnkle', 'lSmallToe'}; 
 IMUlocation = 'R_LowArm'; personID = 1;
-dataIMU.(IMUlocation).forwardResamp = dataIMU.(IMUlocation).forwardResamp./sqrt(sum(dataIMU.(IMUlocation).forwardResamp.^2,2));
-[score, R, nCamOrientationShifted, orientationIoTshifted, orientationIoTtoCamShifted, deltaT] = find_shift_and_alignment([dataCam.camPos(personID).(joints{1}).pos2D dataCam.camPos(personID).(joints{2}).pos2D], dataIMU.(IMUlocation).forwardResamp, dataCam.params.cam.intrinsicMat);
+% dataIMU.(IMUlocation).forwardResamp = dataIMU.(IMUlocation).forwardResamp./sqrt(sum(dataIMU.(IMUlocation).forwardResamp.^2,2));
+posCamJoints = [dataCam.camPos(personID).(joints{1}).pos2D dataCam.camPos(personID).(joints{2}).pos2D];
+[score, qOffset, vAxis, nCamOrientationShifted, orientationIoTshifted, orientationIoTtoCamShifted, deltaT] = find_shift_and_alignment(posCamJoints, dataIMU.(IMUlocation).quatResamp, dataCam.params.cam.intrinsicMat, -1);
+visualizeCamIMUpair(t, orientationIoTtoCamShifted, nCamOrientationShifted, posCamJoints, [], vAxis);
 
 %% Visualize orientation together with video
 % Setup 3D orientation figure
@@ -151,8 +151,11 @@ imgCam = [];
 
 subplot(3,6,[1,14]); hold on; grid on; S = [5 2 3]/5; % Cube dimensions
 [hIoT3D, Pcube] = plotCube(S, -S/2, 0.8, [0 1 0]); view(0,-90);
+hIoT3Darrow = plot3(0,0,0, 'g', 'LineWidth', 3);
+% hIoT2Dproj = plot(0,0, 'g--', 'LineWidth', 5);
 % hIoT3D = plot3(0,0,0, 'LineWidth', 5);
-% hCam3D = plot3(0,0,0, 'LineWidth', 5);
+hCam3Dproj = plot(0,0, 'b', 'LineWidth', 5);
+hCam3Dnormal = plot3(0,0,0, 'r', 'LineWidth', 5);
 axis([-1 1 -1 1 -1 1]); xlabel('x'); ylabel('y'); zlabel('z');
 
 subplot(3,6,3); hold on; grid on;
@@ -180,34 +183,44 @@ hIoT3Dxz = plot([0 1],[0 0], 'LineWidth', 5);
 axis([-1 1 -1 1]); xlabel('x'); ylabel('z');
 
 timerViz = timer('BusyMode','drop', 'ExecutionMode','fixedRate', 'Period',round(1000*mean(dt))/1000);
-[~, hSlider, hPlayPause] = addAnimationTimeControls(t, @(tInd)updateFigAtT(tInd, hIoT3D, hIoT3Dx, hIoT3Dy, hIoT3Dz, hIoT3Dxy, hIoT3Dyz, hIoT3Dxz, imgCam, orientationIoTtoCamShifted, dataIMU.(IMUlocation).quat(1:4:end), Pcube, R), @(shouldPlay)onPlayPause(shouldPlay, timerViz));
+[~, hSlider, hPlayPause] = addAnimationTimeControls(t, @(tInd)updateFigAtT(tInd, hIoT3D, hIoT3Darrow, hCam3Dproj, hCam3Dnormal, hIoT3Dx, hIoT3Dy, hIoT3Dz, hIoT3Dxy, hIoT3Dyz, hIoT3Dxz, imgCam, posCamJoints(:,3:4)-posCamJoints(:,1:2), orientationIoTtoCamShifted, nCamOrientationShifted, Pcube), @(shouldPlay)onPlayPause(shouldPlay, timerViz));
 timerViz.TimerFcn = @(src,event)vizTick(src, hSlider, hPlayPause);
 hPlayPause.notify('Action');  % 'Play' animation
 
-function updateFigAtT(tInd, hIoT3D, hIoT3Dx, hIoT3Dy, hIoT3Dz, hIoT3Dxy, hIoT3Dyz, hIoT3Dxz, imgCam, v, q, Pcube, R)
+function updateFigAtT(tInd, hIoT3D, hIoT3Darrow, hCam3Dproj, hCam3Dnormal, hIoT3Dx, hIoT3Dy, hIoT3Dz, hIoT3Dxy, hIoT3Dyz, hIoT3Dxz, imgCam, v, q, n, Pcube)
 % 	v = dataIMU.(IMUlocation).forwardResamp;
 	%subplot(3,6,[5,18]); if false, imshow(imresize(readFrame(v, tInd), 1/4)); else, imshow(squeeze(imgCam(tInd,:,:,:))); end
 % 	set(hIoT3D, 'XData', [0 v(tInd,1)]);
 % 	set(hIoT3D, 'YData', [0 v(tInd,2)]);
 % 	set(hIoT3D, 'ZData', [0 v(tInd,3)]);
-	v(tInd,:) = rotatepoint(q(tInd), [1 0 0]);
-	v(tInd,:) = (R*rotatepoint(q(tInd), [1 0 0])')';
+% 	v(tInd,:) = rotatepoint(q(tInd), [1 0 0]);
+% 	v(tInd,:) = (R*rotatepoint(q(tInd), [1 0 0])')';
 	for i = 1:length(hIoT3D)
+% 		P = rotatepoint(q(tInd), Pcube(:,:,i));
 		P = rotatepoint(q(tInd), Pcube(:,:,i));
-		P = (R*rotatepoint(q(tInd), Pcube(:,:,i))')';
 		set(hIoT3D(i), 'XData', P(:,1));
 		set(hIoT3D(i), 'YData', P(:,2));
 		set(hIoT3D(i), 'ZData', P(:,3));
 	end
+	P = rotatepoint(q(tInd), [1 0 0]);
+	set(hIoT3Darrow, 'XData', [0 P(1)]);
+	set(hIoT3Darrow, 'YData', [0 P(2)]);
+	set(hIoT3Darrow, 'ZData', [0 P(3)]);
+	set(hCam3Dproj, 'XData', [0 v(tInd,1)]);
+	set(hCam3Dproj, 'YData', [0 v(tInd,2)]);
+	set(hCam3Dnormal, 'XData', [0 n(tInd,1)]);
+	set(hCam3Dnormal, 'YData', [0 n(tInd,2)]);
+	set(hCam3Dnormal, 'ZData', [0 n(tInd,3)]);
+	
 	set(hIoT3Dx, 'XData', [0 v(tInd,1)]);
 	set(hIoT3Dy, 'XData', [0 v(tInd,2)]);
-	set(hIoT3Dz, 'XData', [0 v(tInd,3)]);
+% 	set(hIoT3Dz, 'XData', [0 v(tInd,3)]);
 	set(hIoT3Dxy, 'XData', [0 v(tInd,1)]);
 	set(hIoT3Dxy, 'YData', [0 v(tInd,2)]);
-	set(hIoT3Dyz, 'XData', [0 v(tInd,3)]);
-	set(hIoT3Dyz, 'YData', [0 v(tInd,2)]);
-	set(hIoT3Dxz, 'XData', [0 v(tInd,1)]);
-	set(hIoT3Dxz, 'YData', [0 v(tInd,3)]);
+% 	set(hIoT3Dyz, 'XData', [0 v(tInd,3)]);
+% 	set(hIoT3Dyz, 'YData', [0 v(tInd,2)]);
+% 	set(hIoT3Dxz, 'XData', [0 v(tInd,1)]);
+% 	set(hIoT3Dxz, 'YData', [0 v(tInd,3)]);
 end
 
 function vizTick(timerViz, hSlider, hPlayPause)
