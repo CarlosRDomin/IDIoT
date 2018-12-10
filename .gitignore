@@ -5,6 +5,8 @@
 *.tar.gz
 DataCollection/setup.sh
 DataCollection/data/
-TotalCapture/
 DataCollection/cam_calib*
+TotalCapture/
+Paper/
 Rendered/
+Icon?

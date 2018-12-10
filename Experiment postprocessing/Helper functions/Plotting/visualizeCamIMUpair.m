@@ -1,5 +1,6 @@
-function visualizeCamIMUpair(t, qIoT, nCamOrientation, posCamJoints, videoFilename)
+function visualizeCamIMUpair(t, qIoT, nCamOrientation, posCamJoints, videoFilename, test)
 	if nargin<5, videoFilename = []; end
+	if nargin<6, test = []; end
 
 	% Setup 3D orientation figure
 	figure('Name', 'IMU orientation');
@@ -18,20 +19,24 @@ function visualizeCamIMUpair(t, qIoT, nCamOrientation, posCamJoints, videoFilena
 	axis(repmat([-1 1], 1,3)); xlabel('x'); ylabel('y'); zlabel('z');
 
 	timerViz = timer('BusyMode','drop', 'ExecutionMode','fixedRate', 'Period',round(1000*mean(diff(t)))/1000);
-	[~, hSlider, hPlayPause] = addAnimationTimeControls(t, @(tInd)updateFigAtT(tInd, hIoT3D, hIoT3DforwardArrow, hCam2Dlimb, hCam3Dnormal, qIoT, nCamOrientation, posCamJoints(:,3:4)-posCamJoints(:,1:2), Pcube), @(shouldPlay)onPlayPause(shouldPlay, timerViz));
+	[~, hSlider, hPlayPause] = addAnimationTimeControls(t, @(tInd)updateFigAtT(tInd, hIoT3D, hIoT3DforwardArrow, hCam2Dlimb, hCam3Dnormal, qIoT, nCamOrientation, posCamJoints(:,3:4)-posCamJoints(:,1:2), Pcube, test), @(shouldPlay)onPlayPause(shouldPlay, timerViz));
 	timerViz.TimerFcn = @(src,event)vizTick(src, hSlider, hPlayPause);
 	hPlayPause.notify('Action');  % 'Play' animation
 end
 
 
-function updateFigAtT(tInd, hIoT3D, hIoT3DforwardArrow, hCam2Dlimb, hCam3Dnormal, qIoT, nCam, dirLimbCam2D, Pcube)
+function updateFigAtT(tInd, hIoT3D, hIoT3DforwardArrow, hCam2Dlimb, hCam3Dnormal, qIoT, nCam, dirLimbCam2D, Pcube, test)
+	aux=vrrotvec([1 0 0], test);
+	qIffs = quaternion(aux(1:3).*aux(4), 'rotvec');
 	for i = 1:length(hIoT3D)
-		P = rotatepoint(qIoT(tInd), Pcube(:,:,i));
+		P = rotatepoint(qIoT(tInd)*qIffs, Pcube(:,:,i));
 		set(hIoT3D(i), 'XData', P(:,1));
 		set(hIoT3D(i), 'YData', P(:,2));
 		set(hIoT3D(i), 'ZData', P(:,3));
 	end
 	P = rotatepoint(qIoT(tInd), [1 0 0]);
+  	P = rotateframe(qIoT(tInd), [0 0 0.75]);
+ 	P = rotatepoint(qIoT(tInd), test);
 	set(hIoT3DforwardArrow, 'XData', [0 P(1)]);
 	set(hIoT3DforwardArrow, 'YData', [0 P(2)]);
 	set(hIoT3DforwardArrow, 'ZData', [0 P(3)]);
