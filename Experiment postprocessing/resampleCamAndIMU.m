@@ -46,13 +46,15 @@ function [dataCam, dataIMU] = resampleCamAndIMU(t, dataCam, dataIMU, overwriteDa
 				strQuat = 'quatResamp';
 				strForward = 'forwardResamp';
 			end
-			dataIMU.(IMUlocation).(strQuat) = quaternion();
 			f = dataIMU.(IMUlocation).(strForward); % Shorter notation
+			axis = [1 0 0];
+			f = interp1(dataIMU.params.t - dataCam.t_frames(1), rotatepoint(dataIMU.(IMUlocation).quat, axis), t, 'spline');
+			dataIMU.(IMUlocation).(strQuat) = quaternion();
 			for i = 1:length(f)
 				if isnan(f(i,1))
 					dataIMU.(IMUlocation).(strQuat)(i,:) = quaternion(1,0,0,0);
 				else
-					dataIMU.(IMUlocation).(strQuat)(i,:) = quaternion(vrrotvec2mat(vrrotvec([1 0 0], f(i,:))), 'rotmat', 'point');
+					dataIMU.(IMUlocation).(strQuat)(i,:) = quaternion(vrrotvec2mat(vrrotvec(axis, f(i,:))), 'rotmat', 'point');
 				end
 			end
 		end
