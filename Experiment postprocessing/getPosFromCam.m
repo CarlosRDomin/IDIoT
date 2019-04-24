@@ -1,7 +1,6 @@
-function dataCam = getPosFromCam(filenameOrHDF5Contents, boolOriginAtBottomLeft)
-	if nargin<2 || isempty(boolOriginAtBottomLeft)
-		boolOriginAtBottomLeft = false;
-	end
+function dataCam = getPosFromCam(filenameOrHDF5Contents, boolOriginAtBottomLeft, forceSameIdIfSinglePerson)
+	if nargin<2 || isempty(boolOriginAtBottomLeft), boolOriginAtBottomLeft = false;	end
+	if nargin<3 || isempty(forceSameIdIfSinglePerson), forceSameIdIfSinglePerson = false;	end
 	dataCam = struct();  % Initialize output structure
 
 	% Read the hdf5 file (unless filenameOrHDF5Contents already represents the file contents)
@@ -38,6 +37,7 @@ function dataCam = getPosFromCam(filenameOrHDF5Contents, boolOriginAtBottomLeft)
 		% Iterate every person found in this frame (each column of p)
 		for n = 1:size(p,2)
 			personID = p(end,n)+1;  % 2nd dimension is which person (and p(end,:) contains the person IDs, starting at 0 -> Sum 1 to get person index in the struct camPos)
+			if forceSameIdIfSinglePerson && size(p,2)==1, personID = 1; end  % If there's only one person, ID should always be 1 (so it can be used as ground truth)
 			jointIDs = p(1:length(jointNames), n);	% 1st dimension is which joint -> Get joint IDs (-1 if not found, >=0 if present in hf.joint_list.(Frame_name)
 			if ~isempty(jointIDs) && any(jointIDs >= 0)
 				for j = 1:length(jointNames)

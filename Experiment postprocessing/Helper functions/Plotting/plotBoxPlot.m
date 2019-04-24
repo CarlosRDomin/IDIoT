@@ -1,6 +1,9 @@
-function [h, hLgnd] = plotBoxPlot(score, xTickNames, legendNames, boxWidth, xTickWidth)
-	if nargin<4 || isempty(boxWidth), boxWidth = 0.2; end
-	if nargin<5 || isempty(xTickWidth), xTickWidth = 0.2; end
+function [h, hLgnd] = plotBoxPlot(score, xTickNames, legendNames, colors, boxWidth, xTickWidth)
+	if nargin<4 || isempty(colors), colors = get(gca, 'ColorOrder'); end
+	if nargin<5 || isempty(boxWidth), boxWidth = 0.2; end
+	if nargin<6 || isempty(xTickWidth), xTickWidth = 0.2; end
+	if isnumeric(xTickNames), meanPos = xTickNames; else, meanPos = 1:size(score,1); end  % Decide where the boxes will go on the x axis
+	boxWidth = boxWidth.*min(abs(diff(meanPos))); xTickWidth = xTickWidth.*min(abs(diff(meanPos)));  % And rescale boxWidth and xTickWidth by the shortest x-axis offset
 
 	% Merge all data points in a row and use the variable group to indicate which points belong to which box (1, 2, 3....)
 	data = [];
@@ -15,11 +18,10 @@ function [h, hLgnd] = plotBoxPlot(score, xTickNames, legendNames, boxWidth, xTic
 	end
 	
 	% Plot the actual boxplot
-	pos = reshape(repmat(1:size(score,1), size(score,2),1) + xTickWidth.*linspace(-1,1, size(score,2))', 1,[]);
+	pos = reshape(repmat(meanPos, size(score,2),1) + xTickWidth.*linspace(-1,1, size(score,2))', 1,[]);
 	colGroup = repmat(1:size(score,2), 1,size(score,1));
-	colors = get(gca, 'ColorOrder');
 	h = boxplot(data, group, 'positions',pos, 'colorgroup',colGroup, 'colors',colors, 'Widths',boxWidth);
- 	set(gca, 'xTick',1:size(score,1), 'xTickLabel',xTickNames);
+ 	set(gca, 'xTick',meanPos, 'xTickLabel',xTickNames);
 	set(h, {'LineWidth'},{1.5});
 	y = ylim; y(1) = 0; ylim(y);  % Set lower bound to 0
 
@@ -27,7 +29,7 @@ function [h, hLgnd] = plotBoxPlot(score, xTickNames, legendNames, boxWidth, xTic
 	b = flip(findobj(gca, 'Tag','Box'));
 	for i = 1:length(b)
 		c = colors(1+mod(i-1, size(score,2)),:);
-	   patch(get(b(i),'XData'), get(b(i),'YData'), c, 'FaceAlpha',.5, 'EdgeColor',c, 'LineWidth',1.5);
+	   patch(get(b(i),'XData'), get(b(i),'YData'), c, 'FaceAlpha',.65, 'EdgeColor',c, 'LineWidth',1.5);
 	end
 
 	% Add legend

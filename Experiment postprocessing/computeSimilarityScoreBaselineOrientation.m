@@ -4,7 +4,7 @@ function score = computeSimilarityScoreBaselineOrientation(qIoT, posCamJoints3D)
 	validInds = ~isnan(deviceOriInCam3D(:,1));
 	if sum(validInds) < length(validInds)/4
 		score = 1;
-		fprintf('Too few orientation data points (%d out of %d). Score: 1', sum(validInds), length(validInds));
+		fprintf('Too few orientation data points (%d out of %d). Score: 1\n', sum(validInds), length(validInds));
 	else
 		[q,v] = findBest3Drotation(deviceOriInCam3D(validInds,:), qIoT(validInds));
 		orientationIoTtoCam = rotatepoint(q*qIoT(validInds), v);
